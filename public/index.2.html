@@ -1,0 +1,45 @@
+<!doctype HTML>
+<html>
+    <head>
+        <script type="module">
+            import 'https://webrtc.github.io/adapter/adapter-5.0.3.js';
+
+            class App {
+                constructor(){
+
+                }
+
+                async connect(){
+                    await this.establishSignalConnection();
+
+                    this.signal.onmessage = (e) => {
+                        const message = JSON.parse(e.data);
+
+                        switch(message.type) {
+                            case 'welcome':
+                                this.uuid = message.uuid;
+                                console.log(this.uuid);
+                                break;
+                        }
+                    };
+                }
+
+                async establishSignalConnection(){
+                    return new Promise((resolve, reject) => {
+                        const url = `ws://${window.location.host}`;
+                        this.signal = new WebSocket(url);
+                        this.signal.onopen = () => {
+                            console.debug('WebSocket signal connection established', url);
+                            resolve();
+                        };
+                    });
+                }
+            }
+            
+            new App().connect();
+        </script>
+    </head>
+    <body>
+
+    </body>
+</html>

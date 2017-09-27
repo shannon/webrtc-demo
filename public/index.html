@@ -1,0 +1,158 @@
+<!doctype HTML>
+<html>
+    <head>
+        <script type="module">
+            import 'https://webrtc.github.io/adapter/adapter-5.0.3.js';
+
+            const ICE_SERVERS = [
+                { urls: [
+                    'stun:stun.l.google.com:19302' ,
+                    'stun:stun1.l.google.com:19302',
+                    'stun:stun2.l.google.com:19302',
+                    'stun:stun3.l.google.com:19302',
+                    'stun:stun4.l.google.com:19302' 
+                ]}
+            ];
+
+            class App {
+                constructor(){
+                    this.peers = new Map();
+                }
+
+                async connect(){
+                    this.local = await this.getLocalVideoStream();
+                    await this.establishSignalConnection();
+
+                    this.signal.onmessage = async (e) => {
+                        const message = JSON.parse(e.data);
+
+                        switch(message.type) {
+                            case 'welcome':
+                                this.uuid = message.uuid;
+                                console.log(this.uuid);
+                                break;
+                            case 'join':
+                            case 'offer':
+                                await this.establishPeerConnection(message.from, message.sdp);
+                                break;
+                            case 'candidate':
+                                this.peers.get(message.from) && this.peers.get(message.from).addIceCandidate(message.candidate);
+                                break;
+                            case 'answer':
+                                this.peers.get(message.from) && this.peers.get(message.from).setRemoteDescription(message.sdp);
+                                break;
+
+                        }
+                    };
+                }
+
+                async establishSignalConnection(){
+                    return new Promise((resolve, reject) => {
+                        const url = `ws${window.location.protocol === 'https:' ? 's' : ''}://${window.location.host}`;
+                        this.signal = new WebSocket(url);
+                        this.signal.onopen = () => {
+                            console.debug('WebSocket signal connection established', url);
+                            resolve();
+                        };
+                    });
+                }
+
+                async establishPeerConnection(peerId, offer){
+                    return await new Promise(async (resolve, reject) => {
+
+                        const pc = this.createPeerConnection(peerId);
+
+                        pc.signalChannel.addEventListener('open', async (e) => {
+                            console.debug('WebRTC Data Channel connection established', peerId);
+                            resolve();
+                        });
+
+                        pc.signalChannel.addEventListener('close', async (e) => {
+                            this.peers.delete(peerId);
+                            this.removeRemoteVideoStream(peerId);
+                        });
+
+                        pc.addEventListener('track', (e) => {
+                            if(e.track.kind === 'video') this.addRemoteVideoStream(peerId, e.streams[0]);
+                        });
+                        
+                        this.local.getTracks().forEach(track => pc.addTrack(track, this.local));
+
+                        let sdp;
+                        if(offer){
+                            try {
+                                pc.setRemoteDescription(offer);
+                                sdp = await pc.createAnswer(offer);
+                            } catch(e){
+                                console.debug('WebRTC Answer Failed', e);
+                                throw e;
+                            }
+                        } else {
+                            sdp = await pc.createOffer();
+                        }
+
+                        pc.setLocalDescription(sdp);
+                        this.signal.send(JSON.stringify({ to: peerId, type: sdp.type, sdp: sdp }));
+                    });
+                }
+
+                createPeerConnection(peerId){
+                    const pc = new RTCPeerConnection({
+                        'iceServers': ICE_SERVERS
+                    });
+                
+                    pc.onnegotiationneeded = (e) => console.debug('WebRTC onnegotiationneeded');
+                    pc.onsignalingstatechange = (e) => console.debug('WebRTC onsignalingstatechange', pc.signalingState);
+                    pc.onicegatheringstatechange = (e) => console.debug('WebRTC onicegatheringstatechange', pc.iceGatheringState);
+                    pc.oniceconnectionstatechange = () => console.debug('WebRTC oniceconnectionstatechange', pc.iceConnectionState);
+                
+                    pc.onicecandidate = (e) => {
+                        console.debug('WebRTC onicecandidate', e.candidate);
+                        this.signal.send(JSON.stringify({ type: 'candidate', candidate: e.candidate, to: peerId }));
+                    };
+
+                    pc.signalChannel = pc.createDataChannel('signal', { negotiated: true, id: 0 });
+
+                    this.peers.set(peerId, pc);
+                
+                    return pc;
+                }
+
+                async getLocalVideoStream(){
+                    const video = document.querySelector('#local');
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    video.srcObject = stream;
+                    return stream;
+                }
+
+                addRemoteVideoStream(peerId, stream){
+                    const remote = document.querySelector('#remote');
+                    const video = document.createElement('video');
+                    video.id = `peer-${peerId}`;
+                    video.autoplay = true;
+                    video.srcObject = stream;
+                    remote.appendChild(video);
+                }
+
+                removeRemoteVideoStream(peerId){
+                    const video = document.querySelector(`#peer-${peerId}`);
+                    video.parentElement.removeChild(video);                    
+                }
+            }
+            
+            new App().connect();
+        </script>
+        <style>
+            #local {
+                position: absolute;
+                right: 0;
+                bottom: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <video id="local" autoplay muted></video>
+
+        <div id="remote"></div>
+    </body>
+</html>
