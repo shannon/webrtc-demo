@@ -1,16 +1,23 @@
 ### Running application
+In one terminal
+```
 npm install
-
+npm start
+```
+In another terminal
+```
 npm install -g localtunnel
-
-lt -p 8080 -s html5meetup
+lt -p 8080 -s <subdomain>
+```
+Open browser and go to https://\<subdomain\>.localtunnel.me
 
 ## Walkthrough
 
 ### Step 0 (Setup)
+```
 npm init
-
 npm install koa koa-static koa-websocket kcors uuid
+```
 
 ### Step 1
 #### Server
