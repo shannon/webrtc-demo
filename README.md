@@ -1,12 +1,15 @@
 ### Running application
 npm install
+
 npm install -g localtunnel
+
 lt -p 8080 -s html5meetup
 
 ## Walkthrough
 
 ### Step 0 (Setup)
 npm init
+
 npm install koa koa-static koa-websocket kcors uuid
 
 ### Step 1
